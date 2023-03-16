@@ -1,9 +1,104 @@
 import networkx as nx
-import matplotlib.pyplot as plt
-from . import constants, hierarchy, utils
+from . import constants, utils, distribution
+from . import osmnx_customized as oxc
 
 
-def link_elimination(O, keep_all_streets=True):
+def rebuild_regions(G, rebuilding_regions_gdf, initialize_ln_desc_after=True, **kwargs):
+    """
+    Rebuild parts of the street graph in all "rebuilding regions"
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    rebuilding_regions_gdf : gpd.GeoDataFrame
+        see .io.load_rebuilding_regions
+    initialize_ln_desc_after : bool
+        reset the rebuilt lane configurations before starting
+    kwargs
+        see link_elimination
+
+    Returns
+    -------
+    None
+    """
+
+    if initialize_ln_desc_after:
+        nx.set_edge_attributes(G, nx.get_edge_attributes(G, 'ln_desc'), 'ln_desc_after')
+
+    for idx, data in rebuilding_regions_gdf[rebuilding_regions_gdf['active'] == True].iterrows():
+        _rebuild_region(G, data['geometry'], data['hierarchies_to_include'], data['hierarchies_to_fix'], **kwargs)
+
+
+def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kwargs):
+    """
+    Rebuild part of the street graph within a polygon
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    polygon : shp.geometry.Polygon
+        which part of the street graph should be rebuilt
+    hierarchies_to_include : list
+        which hierarchies of streets should be considered in the process, include all streets if empty
+    hierarchies_to_fix : list
+        which hierarchies of streets should be left unchanged
+    kwargs
+        see link_elimination
+
+    Returns
+    -------
+    None
+    """
+
+    # create a subgraph with only those edges that should be reorganized
+    H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
+
+    if len(H.edges) == 0:
+        return
+
+    if len(hierarchies_to_include) > 0:
+        filtered_edges = dict(filter(lambda key_value: key_value[1]['hierarchy']
+            not in hierarchies_to_include, H.edges.items()))
+        H.remove_edges_from(filtered_edges.keys())
+
+    # initialize the input for link elimination
+    H_minimal_graph_input = distribution.create_given_lanes_graph(H, hierarchies_to_fix=hierarchies_to_fix)
+    #snman.export_streetgraph(H_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
+
+    # run the link elimination
+    H_minimal_graph_output = link_elimination(H_minimal_graph_input, **kwargs)
+    #snman.export_streetgraph(H_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
+
+    # apply the link elimination output to the subgraph graph
+    rebuild_lanes_from_owtop_graph(H, H_minimal_graph_output, hierarchies_to_protect=hierarchies_to_fix)
+
+    # write the reorganized lanes from subgraph H into the main graph G
+    nx.set_edge_attributes(G, nx.get_edge_attributes(H,'ln_desc_after'), 'ln_desc_after')
+
+
+def link_elimination(O, keep_all_streets=True, verbose=False):
+    """
+    Generating a network fo one-way streets. A greedy algorithm that sequentially removes links from the graph
+    until no link can be removed without losing strong connectivity.
+
+    The problem is referred to in the literature as One-Way Traffic Organization problem (OWTOP).
+
+    Parameters
+    ----------
+    O: nx.DiGraph
+        owtop graph, an initial directed graph with links labeled as fixed (direction cannot change) or not fixed
+    keep_all_streets : bool
+        if false, complete streets can be removed as long as all nodes are strongly connected
+    verbose : bool
+        print internal details during the process
+
+    Returns
+    -------
+    O : nx.DiGraph
+        a copy of the graph after link elimination
+    """
 
     # Get the giant weakly connected component (remove any unconnected parts)
     gcc = sorted(nx.weakly_connected_components(O), key=len, reverse=True)[0]
@@ -14,7 +109,8 @@ def link_elimination(O, keep_all_streets=True):
         if data.get('fixed', False) == False:
             O.add_edge(i[1], i[0], fixed=False)
 
-    print('Initialized graph has ', len(O.nodes), ' and ', len(O.edges), ' edges')
+    if verbose:
+        print('Initialized graph has ', len(O.nodes), ' nodes and ', len(O.edges), ' edges')
 
     if not nx.is_strongly_connected(O):
         print('Initialized graph is not strongly connected')
@@ -27,7 +123,8 @@ def link_elimination(O, keep_all_streets=True):
     i = 0
     while True:
         i+=1
-        print('Iteration ', i)
+        if verbose:
+            print('Iteration ', i)
         # Calculate betweenness centrality
         bc = nx.edge_betweenness_centrality(O)
         nx.set_edge_attributes(O, bc, 'bc')
@@ -53,10 +150,20 @@ def link_elimination(O, keep_all_streets=True):
 
 def rebuild_lanes_from_owtop_graph(G, O, hierarchies_to_protect=[]):
     """
-    Rebuild lanes in the street graph according to the topology of the OWTOP graph
-    :param G: Street Graph
-    :param O: OWTOP graph
-    :return:
+    Update lanes in the street graph to match the topology in the owtop graph
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    O : nx.DiGraph
+        owtop graph
+    hierarchies_to_protect : list
+        which street hierarchies should not be changed
+
+    Returns
+    -------
+    None
     """
 
     n_car_lanes = {}
