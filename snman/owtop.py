@@ -80,7 +80,7 @@ def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kw
 
 def link_elimination(O, keep_all_streets=True, verbose=False):
     """
-    Generating a network fo one-way streets. A greedy algorithm that sequentially removes links from the graph
+    Generating a network of one-way streets. A greedy algorithm that sequentially removes links from the graph
     until no link can be removed without losing strong connectivity.
 
     The problem is referred to in the literature as One-Way Traffic Organization problem (OWTOP).
