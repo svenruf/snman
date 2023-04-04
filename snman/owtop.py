@@ -234,6 +234,12 @@ def rebuild_lanes_from_owtop_graph(G, O, hierarchies_to_protect=[]):
                             constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_BACKWARD,
                             constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
                         ]
+                        #check for any L<,L> lanes that are still in lanes_before and convert them to P<,P>
+                        if constants.LANETYPE_CYCLING_LANE+constants.DIRECTION_BACKWARD in lanes_before:
+                             lanes_after[lanes_before.index(constants.LANETYPE_CYCLING_LANE+constants.DIRECTION_BACKWARD)] = constants.LANETYPE_CYCLING_TRACK+constants.DIRECTION_BACKWARD
+                            
+                        if constants.LANETYPE_CYCLING_LANE+constants.DIRECTION_FORWARD in lanes_before:
+                            lanes_after[lanes_before.index(constants.LANETYPE_CYCLING_LANE+constants.DIRECTION_FORWARD)] = constants.LANETYPE_CYCLING_TRACK+constants.DIRECTION_FORWARD
 
         data['ln_desc_after'] = utils.reorder_lanes(list(utils.flatten(lanes_after)))
 
