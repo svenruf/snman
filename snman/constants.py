@@ -146,3 +146,13 @@ EXPORT_EDGE_COLUMNS = [
     'adt_avg_forward',
     'adt_avg_backward'
 ]
+
+
+ORDER_NEW_EDGES = {'P<':1,
+                   'L<':2,
+                   'M<':3,
+                   'P-':4,
+                   'M-':5,
+                   'M>':7,
+                   'L>':8,
+                   'P>':9}

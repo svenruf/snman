@@ -1,4 +1,5 @@
 from typing import Iterable
+from . import constants
 
 
 def prepare_graph(G):
@@ -46,3 +47,31 @@ def flatten(items):
                 yield sub_x
         else:
             yield x
+
+            
+def order_condition(element):
+    """
+    Function that reads the order dict from constants and returns the value to the according key in the dict
+    
+    Parameters
+    ----------
+    element : string
+        lanetype + direction
+        
+    Returns
+    -------
+    int
+        key for sorting inside a list of lanes"""
+    
+    order = constants.ORDER_NEW_EDGES
+    if element in order.keys():
+        return order[element]
+    else:
+        return 0
+
+def reorder_lanes(ln_list):
+    """sorts the ln_list according to the function order_condition
+    """
+    ln_list.sort(key=order_condition)
+    return ln_list
+    
